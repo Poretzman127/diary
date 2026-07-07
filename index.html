@@ -42,7 +42,11 @@
 
   <main class="main">
     <header class="page-head">
-      <div class="page-date" id="page-date"></div>
+      <div class="page-date-wrap" title="Tap to change date">
+        <span class="page-date" id="page-date-label"></span>
+        <span class="page-date-caret">▾</span>
+        <input type="date" id="page-date-picker" aria-label="Change entry date">
+      </div>
       <div class="page-actions">
         <button class="btn-danger" id="delete-btn" title="Delete entry" hidden>🗑</button>
         <button class="btn-primary" id="publish-btn" title="Save entry">✓</button>

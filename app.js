@@ -12,6 +12,7 @@ const OPTIONAL_CATEGORIES = ['mood', 'productivity', 'energy', 'growth', 'advent
 // ===================== STATE =====================
 let DATA = { _schema: 1, pwHash: null, entries: [], _updated: 0 };
 let currentId = null;
+let pageDate = null; // ISO YYYY-MM-DD for the currently-displayed entry (staged for new, or actual for saved)
 let searchQ = '';
 let saveTimer = null;
 let pushTimer = null;
@@ -215,6 +216,11 @@ function wireEvents() {
   body.addEventListener('input', () => queueAutoSave());
   title.addEventListener('input', () => queueAutoSave());
 
+  const picker = document.getElementById('page-date-picker');
+  picker.addEventListener('change', () => {
+    if (picker.value) changePageDate(picker.value);
+  });
+
   window.addEventListener('beforeunload', () => autoSave(true));
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { autoSave(true); return; }
@@ -238,10 +244,11 @@ function findEntry(id) { return DATA.entries.find(e => e.id === id) || null; }
 
 function newEntry() {
   currentId = null;
+  pageDate = todayISO();
   localStorage.removeItem(LS_LAST);
   document.getElementById('entry-title').value = '';
   document.getElementById('entry-body').innerHTML = '';
-  document.getElementById('page-date').textContent = fmtLongDate(todayISO());
+  updateDateUI();
   document.getElementById('delete-btn').hidden = true;
   renderRatings([]);
   setStatus('');
@@ -255,10 +262,11 @@ function openEntry(id, keepScroll) {
   const e = findEntry(id);
   if (!e) { newEntry(); return; }
   currentId = id;
+  pageDate = e.date;
   localStorage.setItem(LS_LAST, id);
   document.getElementById('entry-title').value = e.title || '';
   document.getElementById('entry-body').innerHTML = e.body || '';
-  document.getElementById('page-date').textContent = fmtLongDate(e.date);
+  updateDateUI();
   document.getElementById('delete-btn').hidden = false;
   renderRatings(e.extraCats || []);
   applyRatingUI(e.ratings || {});
@@ -296,7 +304,7 @@ function autoSave(final) {
     if (i >= 0) DATA.entries[i] = { ...DATA.entries[i], ...p, updatedAt: now };
   } else {
     const e = {
-      id: uid(), date: todayISO(),
+      id: uid(), date: pageDate || todayISO(),
       title: p.title, body: p.body,
       ratings: p.ratings, extraCats: p.extraCats,
       createdAt: now, updatedAt: now
@@ -480,6 +488,30 @@ function markPublishState(state) {
   btn.title = state === 'saved' ? 'Saved' : 'Save entry';
 }
 function closeSide() { document.body.classList.remove('side-open'); }
+
+function updateDateUI() {
+  document.getElementById('page-date-label').textContent = fmtLongDate(pageDate || todayISO());
+  const picker = document.getElementById('page-date-picker');
+  if (picker) picker.value = pageDate || todayISO();
+}
+
+function changePageDate(iso) {
+  if (!iso || iso === pageDate) return;
+  pageDate = iso;
+  updateDateUI();
+  if (currentId) {
+    const i = DATA.entries.findIndex(x => x.id === currentId);
+    if (i >= 0) {
+      DATA.entries[i].date = iso;
+      DATA.entries[i].updatedAt = Date.now();
+      mutate();
+      renderList();
+    }
+  } else {
+    // Empty new-entry — nothing to persist yet; date will be used when it saves.
+    queueAutoSave();
+  }
+}
 
 // ===================== SW =====================
 if ('serviceWorker' in navigator) {
