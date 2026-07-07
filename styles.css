@@ -176,6 +176,12 @@ body:not(.locked) .gate { display: none; }
   border-top: 1px solid var(--rule);
   padding: 10px 12px;
 }
+.side-user {
+  font-size: 11px;
+  color: var(--ink-mute);
+  text-align: center;
+  padding: 2px 0 8px;
+}
 .side-lock {
   width: 100%;
   padding: 8px;

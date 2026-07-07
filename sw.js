@@ -1,4 +1,4 @@
-const CACHE = 'diary-shell-v3';
+const CACHE = 'diary-shell-v4';
 const SHELL = [
   './',
   './index.html',

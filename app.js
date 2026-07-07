@@ -3,27 +3,30 @@ const JSONBIN_BIN_ID = '6a4c45b5da38895dfe382c7c';
 const JSONBIN_KEY    = '$2a$10$Suhd6ugh.yjzb8tt/KynCuzQNrHQtw0xZSCQRjrpx9893YzyKheoa';
 const JSONBIN_URL    = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
-const LS_DATA = 'diary_data';
+// Hardcoded users (public repo, plaintext — same tradeoff as workout/baseball).
+// Add more users by appending entries: { password, displayName }.
+const USERS = {
+  MPoretz: { password: 'Baloo123', displayName: 'Max' }
+};
+
+const LS_USER = 'diary_currentUser';
 const LS_LAST = 'diary_lastOpenId';
+const LS_DATA_PREFIX = 'diary_data:'; // per-user cache, e.g. diary_data:MPoretz
 
 const CORE_CATEGORIES = ['fun', 'romance', 'friends', 'chaos', 'drama', 'activities'];
 const OPTIONAL_CATEGORIES = ['mood', 'productivity', 'energy', 'growth', 'adventure', 'stress', 'love', 'social', 'creativity', 'gratitude'];
 
 // ===================== STATE =====================
-let DATA = { _schema: 1, pwHash: null, entries: [], _updated: 0 };
+let CURRENT_USER = null;                                 // e.g. 'MPoretz'
+let DATA = { entries: [], _updated: 0 };                 // per-user slice we operate on
+let binCache = { _schema: 2 };                           // last-known full bin (for slice-preserving PUTs)
 let currentId = null;
-let pageDate = null; // ISO YYYY-MM-DD for the currently-displayed entry (staged for new, or actual for saved)
+let pageDate = null;
 let searchQ = '';
 let saveTimer = null;
 let pushTimer = null;
-let remoteReady = false;
 
 // ===================== UTILS =====================
-async function sha256(str) {
-  const buf = new TextEncoder().encode(str);
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function todayISO() {
   const d = new Date();
@@ -47,19 +50,40 @@ function stripHtml(html) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
+function lsDataKey(user) { return LS_DATA_PREFIX + user; }
+
+// ===================== BIN SCHEMA / MIGRATION =====================
+// v1: { _schema:1, pwHash, entries:[...], _updated }         ← original single-user layout
+// v2: { _schema:2, <user>: { entries:[...], _updated }, ... } ← multi-user
+function migrateBin(bin) {
+  if (!bin || typeof bin !== 'object') return { _schema: 2 };
+  if (bin._schema === 2) return bin;
+  // Anything else (v1 flat, or empty) → wrap the old entries under MPoretz.
+  const migrated = { _schema: 2 };
+  if (Array.isArray(bin.entries) && bin.entries.length) {
+    migrated.MPoretz = { entries: bin.entries, _updated: bin._updated || Date.now() };
+  }
+  return migrated;
+}
+function sliceOf(bin, user) {
+  return (bin && bin[user] && typeof bin[user] === 'object')
+    ? { entries: Array.isArray(bin[user].entries) ? bin[user].entries : [], _updated: bin[user]._updated || 0 }
+    : { entries: [], _updated: 0 };
+}
 
 // ===================== STORAGE (local + remote) =====================
-function loadLocal() {
+function loadLocal(user) {
   try {
-    const raw = localStorage.getItem(LS_DATA);
+    const raw = localStorage.getItem(lsDataKey(user));
     if (!raw) return null;
     return JSON.parse(raw);
   } catch { return null; }
 }
 function saveLocal() {
-  localStorage.setItem(LS_DATA, JSON.stringify(DATA));
+  if (!CURRENT_USER) return;
+  localStorage.setItem(lsDataKey(CURRENT_USER), JSON.stringify(DATA));
 }
-async function fetchRemote() {
+async function fetchBin() {
   try {
     const r = await fetch(`${JSONBIN_URL}/latest`, { headers: { 'X-Master-Key': JSONBIN_KEY } });
     if (!r.ok) return null;
@@ -68,11 +92,17 @@ async function fetchRemote() {
   } catch { return null; }
 }
 async function pushRemote() {
+  if (!CURRENT_USER) return;
   try {
+    // Fetch latest bin so we don't clobber other users' slices.
+    const fresh = migrateBin(await fetchBin() || {});
+    fresh[CURRENT_USER] = DATA;
+    fresh._schema = 2;
+    binCache = fresh;
     const r = await fetch(JSONBIN_URL, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
-      body: JSON.stringify(DATA)
+      body: JSON.stringify(fresh)
     });
     if (r.ok) setStatus('Synced', true);
     else setStatus('Offline (saved locally)');
@@ -90,110 +120,97 @@ function mutate() {
   queuePush();
 }
 
+// ===================== AUTH =====================
+function currentUserMeta() { return CURRENT_USER ? USERS[CURRENT_USER] : null; }
+
+function attemptLogin(username, password) {
+  const meta = USERS[username];
+  if (!meta) return { ok: false, err: 'Unknown username.' };
+  if (meta.password !== password) return { ok: false, err: 'Wrong password.' };
+  localStorage.setItem(LS_USER, username);
+  return { ok: true };
+}
+function doLogout() {
+  autoSave(true);
+  localStorage.removeItem(LS_USER);
+  localStorage.removeItem(LS_LAST);
+  location.reload();
+}
+
 // ===================== GATE =====================
 const gate = document.getElementById('gate');
-const gateSub = document.getElementById('gate-sub');
+const gateUser = document.getElementById('gate-user');
 const gatePw = document.getElementById('gate-pw');
-const gatePw2 = document.getElementById('gate-pw2');
 const gateBtn = document.getElementById('gate-btn');
 const gateForm = document.getElementById('gate-form');
 const gateErr = document.getElementById('gate-err');
 
-function initGate() {
-  const hasHash = !!(DATA && DATA.pwHash);
-  if (hasHash) {
-    gateSub.textContent = 'Enter your password to unlock.';
-    gatePw2.style.display = 'none';
-    gatePw2.required = false;
-    gateBtn.textContent = 'Unlock';
-  } else {
-    gateSub.textContent = 'Set a password to protect your entries.';
-    gatePw2.style.display = 'block';
-    gatePw2.required = true;
-    gateBtn.textContent = 'Set password';
-  }
-  setTimeout(() => gatePw.focus(), 50);
-}
-
-gateForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  gateErr.textContent = '';
-  const pw = gatePw.value;
-  if (!DATA.pwHash) {
-    const pw2 = gatePw2.value;
-    if (pw.length < 4) { gateErr.textContent = 'Password must be at least 4 characters.'; return; }
-    if (pw !== pw2) { gateErr.textContent = 'Passwords do not match.'; return; }
-    DATA.pwHash = await sha256(pw);
-    mutate();
-    unlock();
-    return;
-  }
-  const h = await sha256(pw);
-  if (h !== DATA.pwHash) { gateErr.textContent = 'Wrong password.'; gatePw.select(); return; }
-  unlock();
-});
-
-function unlock() {
-  document.body.classList.remove('locked');
-  document.getElementById('app').hidden = false;
-  gatePw.value = ''; gatePw2.value = '';
-  bootApp();
-}
-function lock() {
-  autoSave(true);
+function showGate() {
   document.body.classList.add('locked');
   document.getElementById('app').hidden = true;
-  initGate();
+  setTimeout(() => gateUser.focus(), 50);
 }
+
+gateForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  gateErr.textContent = '';
+  const u = gateUser.value.trim();
+  const p = gatePw.value;
+  if (!u || !p) { gateErr.textContent = 'Enter a username and password.'; return; }
+  const r = attemptLogin(u, p);
+  if (!r.ok) {
+    gateErr.textContent = r.err;
+    gatePw.select();
+    return;
+  }
+  gatePw.value = '';
+  location.reload();
+});
 
 // ===================== BOOT =====================
 async function boot() {
-  const local = loadLocal();
-  if (local) DATA = normalize(local);
-
-  // Kick a remote fetch immediately; wait briefly if we don't have a local hash yet.
-  const remotePromise = fetchRemote();
-  if (!DATA.pwHash) {
-    const remote = await remotePromise;
-    if (remote) {
-      DATA = normalize(remote);
-      saveLocal();
-    }
-    remoteReady = true;
-    initGate();
-  } else {
-    initGate();
-    remotePromise.then(remote => {
-      remoteReady = true;
-      if (!remote) return;
-      const rn = normalize(remote);
-      // Last-writer-wins: adopt remote if it's newer.
-      if ((rn._updated || 0) > (DATA._updated || 0)) {
-        DATA = rn;
-        saveLocal();
-        if (!document.body.classList.contains('locked')) {
-          // Already unlocked → re-render.
-          renderList();
-          if (currentId && !DATA.entries.some(e => e.id === currentId)) newEntry();
-          else if (currentId) openEntry(currentId, true);
-        }
-      } else if ((DATA._updated || 0) > (remote._updated || 0)) {
-        pushRemote();
-      }
-    });
+  const stored = localStorage.getItem(LS_USER);
+  if (!stored || !USERS[stored]) {
+    // Not logged in (or user was removed from USERS).
+    if (stored) localStorage.removeItem(LS_USER);
+    showGate();
+    return;
   }
-}
-function normalize(bin) {
-  const b = bin || {};
-  return {
-    _schema: 1,
-    pwHash: b.pwHash || null,
-    entries: Array.isArray(b.entries) ? b.entries : [],
-    _updated: b._updated || 0
-  };
+  CURRENT_USER = stored;
+
+  // Load local first for instant paint.
+  const cached = loadLocal(CURRENT_USER);
+  if (cached && typeof cached === 'object') {
+    DATA = { entries: Array.isArray(cached.entries) ? cached.entries : [], _updated: cached._updated || 0 };
+  }
+
+  // Reveal app immediately with local data.
+  document.body.classList.remove('locked');
+  document.getElementById('app').hidden = false;
+  bootApp();
+
+  // Then fetch remote and sync (last-writer-wins per user).
+  const remote = await fetchBin();
+  if (!remote) return;
+  const migrated = migrateBin(remote);
+  binCache = migrated;
+  const remoteSlice = sliceOf(migrated, CURRENT_USER);
+  if ((remoteSlice._updated || 0) > (DATA._updated || 0)) {
+    DATA = remoteSlice;
+    saveLocal();
+    renderList();
+    if (currentId && !DATA.entries.some(e => e.id === currentId)) newEntry();
+    else if (currentId) openEntry(currentId, true);
+  } else if ((DATA._updated || 0) > (remoteSlice._updated || 0)) {
+    // Local edits happened before we saw remote — push them up so they land.
+    pushRemote();
+  }
+  // If the raw bin was still v1, migrate it upstream on the next mutation.
+  if (remote._schema !== 2) pushRemote();
 }
 
 function bootApp() {
+  renderUserChip();
   renderList();
   const lastId = localStorage.getItem(LS_LAST);
   if (lastId && DATA.entries.some(e => e.id === lastId)) openEntry(lastId);
@@ -203,7 +220,9 @@ function bootApp() {
 
 function wireEvents() {
   document.getElementById('new-btn').onclick = () => { autoSave(true); newEntry(); closeSide(); };
-  document.getElementById('lock-btn').onclick = () => lock();
+  document.getElementById('logout-btn').onclick = () => {
+    if (confirm(`Log out ${currentUserMeta().displayName || CURRENT_USER}?`)) doLogout();
+  };
   document.getElementById('publish-btn').onclick = () => publish();
   document.getElementById('delete-btn').onclick = () => deleteCurrent();
   document.getElementById('side-toggle').onclick = () => document.body.classList.toggle('side-open');
@@ -224,12 +243,14 @@ function wireEvents() {
   window.addEventListener('beforeunload', () => autoSave(true));
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { autoSave(true); return; }
-    // Coming back to tab — refresh from remote (may have edits from another device).
-    fetchRemote().then(remote => {
+    // Re-focus: refresh from remote (edits from another device may exist).
+    fetchBin().then(remote => {
       if (!remote) return;
-      const rn = normalize(remote);
-      if ((rn._updated || 0) > (DATA._updated || 0)) {
-        DATA = rn; saveLocal();
+      const migrated = migrateBin(remote);
+      binCache = migrated;
+      const rs = sliceOf(migrated, CURRENT_USER);
+      if ((rs._updated || 0) > (DATA._updated || 0)) {
+        DATA = rs; saveLocal();
         renderList();
         if (currentId && !DATA.entries.some(e => e.id === currentId)) newEntry();
         else if (currentId) openEntry(currentId, true);
@@ -296,6 +317,7 @@ function queueAutoSave() {
 }
 function autoSave(final) {
   clearTimeout(saveTimer);
+  if (!CURRENT_USER) return;
   const p = currentPayload();
   if (isEmpty(p)) return;
   const now = Date.now();
@@ -364,6 +386,13 @@ function renderList() {
   el.querySelectorAll('.side-item').forEach(item => {
     item.onclick = () => openEntry(item.dataset.id);
   });
+}
+
+function renderUserChip() {
+  const el = document.getElementById('side-user');
+  if (!el || !CURRENT_USER) return;
+  const meta = USERS[CURRENT_USER] || {};
+  el.textContent = `Signed in as ${meta.displayName || CURRENT_USER}`;
 }
 
 // ===================== RATINGS =====================
@@ -508,7 +537,6 @@ function changePageDate(iso) {
       renderList();
     }
   } else {
-    // Empty new-entry — nothing to persist yet; date will be used when it saves.
     queueAutoSave();
   }
 }
