@@ -1,9 +1,15 @@
-const CACHE = 'diary-shell-v2';
+const CACHE = 'diary-shell-v3';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
-  './app.js'
+  './app.js',
+  './favicon.ico',
+  './favicon-16x16.png',
+  './favicon-32x32.png',
+  './apple-touch-icon.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
 self.addEventListener('install', (e) => {
   self.skipWaiting();
