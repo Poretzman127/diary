@@ -234,17 +234,10 @@ body:not(.locked) .gate { display: none; }
 }
 .page-date-wrap:hover { background: rgba(176, 86, 42, 0.06); color: var(--accent); }
 .page-date-wrap:hover .page-date { color: var(--accent); }
-.page-date-wrap:hover .page-date-caret { color: var(--accent); }
 .page-date {
   font-family: "Iowan Old Style", "Georgia", serif;
   font-size: 26px; font-weight: 600;
   color: var(--ink);
-  pointer-events: none;
-  transition: color .12s;
-}
-.page-date-caret {
-  font-size: 13px;
-  color: var(--ink-mute);
   pointer-events: none;
   transition: color .12s;
 }
