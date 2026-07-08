@@ -6,7 +6,8 @@ const JSONBIN_URL    = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 // Hardcoded users (public repo, plaintext — same tradeoff as workout/baseball).
 // Add more users by appending entries: { password, displayName }.
 const USERS = {
-  MPoretz: { password: 'Baloo123', displayName: 'Max' }
+  MPoretz: { password: 'Baloo123', displayName: 'Max' },
+  MPheng: { password: 'Baloournal', displayName: 'Malynn' }
 };
 
 const LS_USER = 'diary_currentUser';
