@@ -238,6 +238,7 @@ function wireEvents() {
   const title = document.getElementById('entry-title');
   body.addEventListener('input', () => queueAutoSave());
   title.addEventListener('input', () => queueAutoSave());
+  document.getElementById('entry-song').addEventListener('input', () => queueAutoSave());
 
   const picker = document.getElementById('page-date-picker');
   picker.addEventListener('change', () => {
@@ -273,6 +274,7 @@ function newEntry() {
   localStorage.removeItem(LS_LAST);
   document.getElementById('entry-title').value = '';
   document.getElementById('entry-body').innerHTML = '';
+  document.getElementById('entry-song').value = '';
   updateDateUI();
   document.getElementById('delete-btn').hidden = true;
   renderRatings([]);
@@ -291,6 +293,7 @@ function openEntry(id, keepScroll) {
   localStorage.setItem(LS_LAST, id);
   document.getElementById('entry-title').value = e.title || '';
   document.getElementById('entry-body').innerHTML = e.body || '';
+  document.getElementById('entry-song').value = e.song || '';
   updateDateUI();
   document.getElementById('delete-btn').hidden = false;
   renderRatings(e.extraCats || []);
@@ -307,12 +310,13 @@ function openEntry(id, keepScroll) {
 function currentPayload() {
   const title = document.getElementById('entry-title').value.trim();
   const body = document.getElementById('entry-body').innerHTML.trim();
+  const song = document.getElementById('entry-song').value.trim();
   const ratings = collectRatings();
   const extraCats = collectExtraCats();
-  return { title, body, ratings, extraCats };
+  return { title, body, song, ratings, extraCats };
 }
 function isEmpty(p) {
-  return !p.title && !stripHtml(p.body) && Object.keys(p.ratings).length === 0 && (!p.extraCats || p.extraCats.length === 0);
+  return !p.title && !stripHtml(p.body) && !p.song && Object.keys(p.ratings).length === 0 && (!p.extraCats || p.extraCats.length === 0);
 }
 function queueAutoSave() {
   markPublishState('unsaved');
@@ -331,7 +335,7 @@ function autoSave(final) {
   } else {
     const e = {
       id: uid(), date: pageDate || todayISO(),
-      title: p.title, body: p.body,
+      title: p.title, body: p.body, song: p.song,
       ratings: p.ratings, extraCats: p.extraCats,
       createdAt: now, updatedAt: now
     };

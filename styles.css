@@ -320,6 +320,32 @@ body:not(.locked) .gate { display: none; }
 }
 
 /* ===================== RATINGS ===================== */
+.song {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+.song-title {
+  font-family: "Iowan Old Style", "Georgia", serif;
+  font-size: 14px; font-weight: 600;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+}
+.song-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 2px 0 8px;
+  font-family: "Iowan Old Style", "Georgia", serif;
+  font-size: 17px;
+  color: var(--ink);
+  outline: none;
+  border-bottom: 1px solid var(--rule);
+}
+.song-input::placeholder { color: var(--ink-mute); font-style: italic; }
+
 .ratings {
   margin-top: 40px;
   padding-top: 24px;
@@ -478,6 +504,7 @@ body:not(.locked) .gate { display: none; }
   .page-date { font-size: 22px; }
   .entry-title { font-size: 19px; }
   .entry-body { font-size: 16px; }
+  .song-input { font-size: 16px; }
   .rating-row {
     grid-template-columns: 110px 1fr;
     gap: 8px;
