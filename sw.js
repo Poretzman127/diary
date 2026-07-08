@@ -1,4 +1,4 @@
-const CACHE = 'diary-shell-v5';
+const CACHE = 'diary-shell-v6';
 const SHELL = [
   './styles.css',
   './app.js',

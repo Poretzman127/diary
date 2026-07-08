@@ -193,6 +193,7 @@ body:not(.locked) .gate { display: none; }
   font-size: 12px;
 }
 .side-lock:hover { background: rgba(176, 86, 42, 0.06); color: var(--ink); }
+.side-build { width: 100%; text-align: center; font-size: 10px; color: var(--ink-soft); opacity: .6; margin-top: 4px; }
 
 .side-toggle {
   display: none;
@@ -476,6 +477,7 @@ body:not(.locked) .gate { display: none; }
     z-index: 30;
   }
   .side-toggle { display: flex; }
+  body.side-open .side-toggle { display: none; }
 
   .main {
     padding: 60px 20px 100px;

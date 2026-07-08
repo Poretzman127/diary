@@ -226,6 +226,10 @@ function wireEvents() {
   document.getElementById('publish-btn').onclick = () => publish();
   document.getElementById('delete-btn').onclick = () => deleteCurrent();
   document.getElementById('side-toggle').onclick = () => document.body.classList.toggle('side-open');
+  document.addEventListener('click', (e) => {
+    if (document.body.classList.contains('side-open')
+        && !e.target.closest('.side') && !e.target.closest('.side-toggle')) closeSide();
+  });
 
   const search = document.getElementById('search');
   search.oninput = () => { searchQ = search.value.trim().toLowerCase(); renderList(); };
