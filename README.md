@@ -1,4 +1,4 @@
-# Debrief
+# Diary
 
 Private journal — password-gated, cloud-synced, mobile-friendly.
 
