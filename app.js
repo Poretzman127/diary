@@ -7,7 +7,8 @@ const JSONBIN_URL    = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 // Add more users by appending entries: { password, displayName }.
 const USERS = {
   MPoretz: { password: 'Baloo123', displayName: 'Max' },
-  MPheng: { password: 'Baloournal', displayName: 'Malynn' }
+  MPheng: { password: 'Baloournal', displayName: 'Malynn' },
+  HBrown: { password: 'HarrysJoint', displayName: 'Harry' }
 };
 
 const LS_USER = 'diary_currentUser';
